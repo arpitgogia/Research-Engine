@@ -77,16 +77,18 @@
     function getHistory(query="") {
         var history_table = document.getElementById("history_tbl")
         history_table.innerHTML = "<table class='table table-hover' id='history_tbl'></table>"
-        chrome.storage.local.get(function(results) {
+        chrome.storage.local.get(null, function(results) {
             var allPages = []
-            for (key in results) {
+            var keys = results.keys();
+            for (var i = keys.length - 1; i >= (keys.length - 21); i--) {
+                key = keys[i];
                 if (!isNaN(key) && (results[key].url + "/" + results[key].title).indexOf(query) > -1) {
                     allPages.push(results[key])
                 }
             }
             allPages.reverse()
             allPageDisplay = nextPages(allPages)
-            addHistoricPages(allPageDisplay.next().value)
+            addHistoricPages(allPageDisplay.next().value);
         })
     }
 
