@@ -1,6 +1,5 @@
 (function() {
     var allPageDisplay = null;
-
     // add element to the custom blacklist 
     //TODO: check if element is already there before adding. 
     var add = function(type, content) {
@@ -48,8 +47,9 @@
     }
 
     function addHistoricPages(pages) {
-        var history_table = document.getElementById("history_tbl")
-        for(i in pages) {
+        console.log(pages);
+        var history_table = document.getElementById("history_tbl");
+        for(var i = 0 ; i < pages.length ; i++) {
             var thisRow = document.createElement("tr")
             var colOne = document.createElement("td")
             colOne.innerText =  cutString(pages[i].title) 
@@ -74,25 +74,94 @@
         }
     }
 
-    function getHistory(query="") {
-        var history_table = document.getElementById("history_tbl")
-        history_table.innerHTML = "<table class='table table-hover' id='history_tbl'></table>"
-        chrome.storage.local.get(null, function(results) {
-            var allPages = []
-            var keys = results.keys();
-            for (var i = keys.length - 1; i >= (keys.length - 21); i--) {
-                key = keys[i];
-                if (!isNaN(key) && (results[key].url + "/" + results[key].title).indexOf(query) > -1) {
-                    allPages.push(results[key])
+    function getHistory(text="") {
+        var query = makeQueryFromText(text);
+        query.text = text;
+        if (query.before !== false && query.after !== false && query.after >= query.before) return;
+        query.keywords.sort(function(a,b){return b.length-a.length});
+
+        if (query.after >= CUTOFF_DATE) {
+            var start = Math.floor(binarySearch(preloaded, {'time':+query.after}, LT_OBJ,
+                                                GT_OBJ, 0, preloaded.length));
+            var end;
+            if (query.before) {
+                end = Math.ceil(binarySearch(preloaded, {'time':+query.before}, LT_OBJ,
+                                             GT_OBJ, 0, preloaded.length));
+            } else {
+                end = preloaded.length;
+            }
+            suggest(query, preloaded.slice(start, end))
+        } else {
+            var start = Math.floor(binarySearch(timeIndex, +query.after, LT,
+                                                GT, 0, timeIndex.length));
+            var end;
+            if (query.before) {
+                end = Math.ceil(binarySearch(timeIndex, +query.before, LT,
+                                             GT, 0, timeIndex.length));
+            } else {
+                end = timeIndex.length;
+            }
+
+            window.sorted = [];
+            var get = timeIndex.slice(start, end);
+            var index = Math.ceil(binarySearch(get, +CUTOFF_DATE, LT, GT, 0, get.length));
+            if (index < get.length) {
+                sorted = preloaded.slice(0, get.length - index + 1);
+            }
+            get = get.slice(0,index);
+
+            chrome.storage.local.get(get, function(items) {
+                for (var key in items) {
+                    sorted.push(items[key]);
+                }
+                sorted.sort(function(a,b) {return a.time - b.time});
+                suggest(query, sorted);
+            });
+        }
+    }
+    function suggest(query, candidates) {
+        var results = [];
+        var urls = {};
+        var keywords = query.keywords;
+        var keywordsLen = keywords.length;
+        var negative = query.negative;
+        var negativeLen = negative.length;
+        var j = 0;
+        for (var i = candidates.length - 1; i > -1; i--) {
+            var text = candidates[i].text;
+            var isMatching = true;
+            for (var k = 0; k < negativeLen; k++) {
+                if (text.indexOf(negative[k]) > -1) {
+                    isMatching = false;
                 }
             }
-            allPages.reverse()
-            allPageDisplay = nextPages(allPages)
-            addHistoricPages(allPageDisplay.next().value);
-        })
+
+            if (isMatching) {
+                for (var k = 0; k < keywordsLen; k++) {
+                    if (text.indexOf(keywords[k]) === -1) {
+                        isMatching = false;
+                        break;
+                    }
+                }
+
+                if (isMatching) {
+                    var cleanedURL = cleanURL(candidates[i].url);
+                    if (!(cleanedURL in urls)) {
+                        results.push(candidates[i]);
+                        urls[cleanedURL] = true;
+                        j += 1;
+                        if (j === 6) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        addHistoricPages(results);
     }
 
     function* nextPages(allPages){
+        // console.log(allPages);
         while(true)
             yield allPages.splice(0, 20)
     }
@@ -196,7 +265,7 @@
         }, 2000);
     }
 
-    getHistory()
+    // getHistory()
 
     document.getElementById("save").onclick = save;
     document.getElementById("add").onclick = add;
@@ -225,5 +294,3 @@
     };
 
 })();
-
-
